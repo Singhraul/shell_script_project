@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# Log file for errors and actions
+LOG_FILE="/path/to/log/file.log"
+
+# List of software packages to install
+SOFTWARE_PACKAGES=("apache2" "nginx" "mysql-server" "git" "curl")
+
+# Configuration files for post-installation setup
+CONFIG_FILES=("/etc/apache2/apache2.conf" "/etc/nginx/nginx.conf" "/etc/mysql/my.cnf")
+
+# Package manager detection
+OS=$(uname -s)
+PACKAGE_MANAGER=""
+INSTALL_CMD=""
+UPDATE_CMD=""
+CHECK_CMD=""
+VERSION_CMD=""
+
+# Function to log messages
+log_message() {
+    echo "$1" | tee -a "$LOG_FILE"
+}
+
+# Detect the package manager based on the OS
+detect_package_manager() {
+    if [ -f /etc/debian_version ]; then
+        # For Debian/Ubuntu
+        PACKAGE_MANAGER="apt"
+        INSTALL_CMD="sudo apt install -y"
+        UPDATE_CMD="sudo apt update"
+        CHECK_CMD="dpkg -l"
+        VERSION_CMD="dpkg-query -W -f='${Version}'"
+    elif [ -f /etc/redhat-release ]; then
+        # For CentOS/RHEL/Fedora
+        PACKAGE_MANAGER="yum"
+        INSTALL_CMD="sudo yum install -y"
+        UPDATE_CMD="sudo yum update -y"
+        CHECK_CMD="rpm -q"
+        VERSION_CMD="rpm -qi"
+    else
+        log_message "Unsupported OS. Exiting..."
+        exit 1
+    fi
+}
+
+# Function to check if a package is installed and up-to-date
+check_and_install_package() {
+    PACKAGE_NAME=$1
+
+    log_message "Checking if $PACKAGE_NAME is installed..."
+    
+    # Check if the package is installed and its version
+    INSTALLED_VERSION=$($VERSION_CMD "$PACKAGE_NAME" 2>/dev/null)
+
+    if [ -z "$INSTALLED_VERSION" ]; then
+        log_message "$PACKAGE_NAME is not installed. Installing..."
+        $INSTALL_CMD "$PACKAGE_NAME"
+    else
+        log_message "$PACKAGE_NAME is already installed. Checking version..."
+        LATEST_VERSION=$($PACKAGE_MANAGER show "$PACKAGE_NAME" | grep -i "Version:" | awk '{print $2}')
+        
+        if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
+            log_message "$PACKAGE_NAME is outdated. Installing the latest version..."
+            $INSTALL_CMD "$PACKAGE_NAME"
+        else
+            log_message "$PACKAGE_NAME is up to date."
+        fi
+    fi
+}
+
+# Function to configure the software after installation
+configure_software() {
+    for CONFIG_FILE in "${CONFIG_FILES[@]}"; do
+        if [ -f "$CONFIG_FILE" ]; then
+            log_message "Configuring $CONFIG_FILE..."
+            # Add custom configurations here (example: set server name, enable specific modules, etc.)
+            # echo "Custom Config" >> "$CONFIG_FILE" # You can add lines to the config file.
+        else
+            log_message "Configuration file $CONFIG_FILE does not exist. Skipping."
+        fi
+    done
+}
+
+# Main function to install and configure software
+install_and_configure_software() {
+    detect_package_manager
+    
+    # Update package list before installing
+    log_message "Updating package list..."
+    $UPDATE_CMD
+    
+    # Loop through and install each package
+    for PACKAGE in "${SOFTWARE_PACKAGES[@]}"; do
+        check_and_install_package "$PACKAGE"
+    done
+    
+    # Post-installation configuration
+    configure_software
+    
+    log_message "Software installation and configuration completed."
+}
+
+# Run the installation and configuration process
+install_and_configure_software
